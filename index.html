@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Puppy Commands – Live Demo (Fixed)</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #a7d3a6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    canvas {
+      background: #c1e1c1;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    #controls {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      background: #ff7f50;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.1s;
+    }
+    button:hover { background: #ff6347; }
+    button:active { transform: scale(0.98); }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" aria-label="Puppy playground" role="img"></canvas>
+  <div id="controls" aria-label="Puppy controls">
+    <button id="walkBtn" aria-label="Walk">Walk</button>
+    <button id="sitBtn" aria-label="Sit">Sit</button>
+    <button id="lieBtn" aria-label="Lie Down">Lie Down</button>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------------------
+    // FIX: Remove undefined DEFAULT_PUPPY_IMG usage and provide clear defaults.
+    // -------------------------------------------------------------------------
+    // Option A (recommended): paste a base64-encoded data URL into the string below
+    // to ensure the puppy always loads even offline. (E.g., "data:image/jpeg;base64,...")
+    const DEFAULT_PUPPY_DATA_URL = ""; // <-- paste full data URL here to embed the photo
+
+    // Option B: if you're hosting the image as a file next to this HTML, set the URL:
+    const DEFAULT_PUPPY_URL = "IMG_0937.jpg"; // make sure this file ships with the site
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Crisp rendering on high-DPI displays
+    const DPR = window.devicePixelRatio || 1;
+    function resizeCanvas() {
+      const w = Math.min(window.innerWidth - 40, 600);
+      const h = Math.min(window.innerHeight - 150, 400);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      canvas.width = Math.floor(w * DPR);
+      canvas.height = Math.floor(h * DPR);
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- Game Objects ---
+    const puppy = {
+      x: canvas.width / DPR / 2,
+      y: canvas.height / DPR / 2,
+      size: 100,
+      speed: 90, // px/s
+      state: 'walking', // 'walking' | 'sitting' | 'lying'
+      velocityX: 40,
+      velocityY: 0,
+      turnTimer: 0,
+      image: new Image(),
+      imageLoaded: false
+    };
+
+    // Choose embedded data URL if provided; otherwise use file URL.
+    const initialSrc = DEFAULT_PUPPY_DATA_URL || DEFAULT_PUPPY_URL;
+    puppy.image.crossOrigin = 'anonymous';
+    puppy.image.onload = () => { puppy.imageLoaded = true; start(); };
+    puppy.image.onerror = () => { console.warn('Puppy image failed to load. Using emoji fallback.'); start(); };
+    puppy.image.src = initialSrc;
+
+    // --- Event Listeners ---
+    document.getElementById('walkBtn').addEventListener('click', () => puppy.state = 'walking');
+    document.getElementById('sitBtn').addEventListener('click', () => { puppy.state = 'sitting'; puppy.velocityX = 0; puppy.velocityY = 0; });
+    document.getElementById('lieBtn').addEventListener('click', () => { puppy.state = 'lying'; puppy.velocityX = 0; puppy.velocityY = 0; });
+
+    // --- Game Logic ---
+    function update(dt) {
+      const w = canvas.width / DPR, h = canvas.height / DPR;
+      if (puppy.state === 'walking') {
+        puppy.x += puppy.velocityX * dt;
+        puppy.y += puppy.velocityY * dt;
+        // Boundary detection
+        if (puppy.x > w - puppy.size / 2 || puppy.x < puppy.size / 2) puppy.velocityX *= -1;
+        if (puppy.y > h - puppy.size / 2 || puppy.y < puppy.size / 2) puppy.velocityY *= -1;
+        // Randomly change direction
+        puppy.turnTimer -= dt;
+        if (puppy.turnTimer <= 0) {
+          const angle = Math.random() * Math.PI * 2;
+          puppy.velocityX = Math.cos(angle) * puppy.speed;
+          puppy.velocityY = Math.sin(angle) * puppy.speed;
+          puppy.turnTimer = 1.5 + Math.random() * 2.0; // seconds
+        }
+      }
+    }
+
+    function draw() {
+      const w = canvas.width / DPR, h = canvas.height / DPR;
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(puppy.x, puppy.y);
+      if (puppy.state === 'lying') ctx.rotate(Math.PI / 2);
+
+      if (puppy.imageLoaded) {
+        ctx.drawImage(puppy.image, -puppy.size / 2, -puppy.size / 2, puppy.size, puppy.size);
+      } else {
+        // Fallback to emoji
+        ctx.font = (puppy.size * 0.7) + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(puppy.state === 'lying' ? '😴' : '🐶', 0, 0);
+      }
+      ctx.restore();
+    }
+
+    // Frame-rate independent loop
+    let last = performance.now();
+    function loop(now = performance.now()) {
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function start() { requestAnimationFrame(loop); }
+
+    // ------------------------------
+    // Lightweight "tests" in console
+    // ------------------------------
+    (function tests() {
+      try {
+        console.assert(!!canvas && !!ctx, 'Canvas/context should exist');
+        console.assert(typeof puppy === 'object', 'Puppy object exists');
+        console.assert(['walking','sitting','lying'].includes(puppy.state), 'Initial state is valid');
+        console.assert(typeof DEFAULT_PUPPY_URL === 'string', 'DEFAULT_PUPPY_URL defined');
+        console.assert(typeof DEFAULT_PUPPY_DATA_URL === 'string', 'DEFAULT_PUPPY_DATA_URL defined');
+
+        // Simulate control clicks
+        document.getElementById('sitBtn').click();
+        console.assert(puppy.state === 'sitting', 'Sit button sets state to sitting');
+        document.getElementById('lieBtn').click();
+        console.assert(puppy.state === 'lying', 'Lie button sets state to lying');
+        document.getElementById('walkBtn').click();
+        console.assert(puppy.state === 'walking', 'Walk button sets state to walking');
+
+        // Image load check (async): warn instead of failing hard.
+        setTimeout(() => {
+          if (!puppy.imageLoaded) {
+            console.warn('Test: default image did not load – using emoji fallback. To guarantee the puppy image every visit, paste a base64 data URL into DEFAULT_PUPPY_DATA_URL.');
+          }
+        }, 1200);
+      } catch (e) {
+        console.error('Tests failed with error:', e);
+      }
+    })();
+  </script>
+</body>
+</html>
